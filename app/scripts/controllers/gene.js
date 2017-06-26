@@ -115,7 +115,7 @@ angular.module('oncokbStaticApp')
                                 var hoverInfo = [];
                                 for (var i = 0; i < countsByGene.data.length; i++) {
                                     for (var j = 0; j < totalCounts.data.length; j++) {
-                                        if (totalCounts.data[j][0] === countsByGene.data[i][0]) {
+                                        if (totalCounts.data[j][0] === countsByGene.data[i][0] && totalCounts.data[j][1] > 50) {
                                             results.push({
                                                 study: countsByGene.data[i][0],
                                                 frequency: (100 * countsByGene.data[i][1] / totalCounts.data[j][1]).toFixed(1)
@@ -133,13 +133,13 @@ angular.module('oncokbStaticApp')
                                     hoverInfo.push(item.frequency + '% of patients have annotated ' + $scope.gene.hugoSymbol + ' mutation');
                                 });
 
-                                api.getStudies(studies.join())
+                                api.getStudies()
                                     .then(function(studyInfo) {
                                         studies.forEach(function(item) {
                                             studyInfo.data.forEach(function(item1) {
-                                                if (item1.id === item) {
-                                                    shortNames.push(item1.short_name.substring(0, item1.short_name.indexOf('(') - 1));
-                                                    fullNames.push(item1.name);
+                                                if (item1.sampleListId === item) {
+                                                    shortNames.push(item1.name.substring(12).replace(/cancer|tumor|of/gi, '').trim());
+                                                    fullNames.push(item1.name.substring(12).trim());
                                                 }
                                             });
                                         });
@@ -225,7 +225,7 @@ angular.module('oncokbStaticApp')
                 },
                 xaxis: {
                     tickfont: {
-                        size: Math.max(Math.min(260 / maxLengthStudy.length, 15, 180 / shortNames.length), 6)
+                        size: Math.max(Math.min(260 / maxLengthStudy.length, 15, 180 / shortNames.length), 10)
                     },
                     tickangle: 30,
                     fixedrange: true
@@ -284,7 +284,7 @@ angular.module('oncokbStaticApp')
             } else {
                 // load the template when first load the page
                 $('#templateDiv').load('views/mutationMapperTemplates.html', function() {
-                    $scope.studyName = 'across 20 Disease Specific Studies';
+                    $scope.studyName = 'in MSKCC Impact studies';
                     // init mutation mapper
                     mutationMapper = new MutationMapper(options);
                     mutationMapper.init();
@@ -349,7 +349,7 @@ angular.module('oncokbStaticApp')
                 resetFlag = false;
                 $scope.clinicalVariantsCount = uniqueClinicVariants.length;
                 $scope.annotatedVariantsCount = uniqueAnnotatedVariants.length;
-                $scope.studyName = 'across 20 Disease Specific Studies';
+                $scope.studyName = 'in MSKCC Impact studies';
             } else {
                 proteinChanges = _.uniq(proteinChanges);
                 var regexString = '';

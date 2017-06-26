@@ -61,8 +61,8 @@ angular.module('oncokbStaticApp')
                 return $http.get(legacyLink +
                     'mutationMapperData?hugoSymbol=' + hugoSymbol);
             },
-            getStudies: function(studies) {
-                return $http.get('http://www.cbioportal.org/api-legacy/studies?study_ids=' + studies);
+            getStudies: function() {
+                return $http.get('http://www.cbioportal.org/api/studies/msk_impact_2017/sample-lists?projection=SUMMARY');
             },
             getpumbedArticle: function(pumbedID) {
                 return $http.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&retmode=json&id=' + pumbedID);
