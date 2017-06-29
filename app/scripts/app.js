@@ -30,9 +30,9 @@ angular
     .constant('MutationMapper', window.MutationMapper)
     .constant('MutationCollection', window.MutationCollection)
     .constant('Plotly', window.Plotly)
-    .constant('legacyLink', 'legacy-api/')
-    .constant('privateApiLink', 'api/private/')
-    .constant('apiLink', 'api/v1/')
+    .constant('legacyLink', 'http://localhost:8080/oncokb/legacy-api/')
+    .constant('privateApiLink', 'http://localhost:8080/oncokb/api/private/')
+    .constant('apiLink', 'http://localhost:8080/oncokb/api/v1/')
     .config(function($routeProvider) {
         $routeProvider
             .when('/', {
@@ -86,6 +86,11 @@ angular
                 templateUrl: 'views/cancerGenes.html',
                 controller: 'CancerGenesCtrl',
                 controllerAs: 'cancerGenes'
+            })
+            .when('/gene/:geneName/variant/:variantName', {
+                templateUrl: 'views/gene.html',
+                controller: 'GeneCtrl',
+                controllerAs: 'gene'
             })
             .otherwise({
                 redirectTo: '/'

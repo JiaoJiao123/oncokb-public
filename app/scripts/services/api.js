@@ -72,7 +72,7 @@ angular.module('oncokbStaticApp')
                     'mutationMapperData?hugoSymbol=' + hugoSymbol);
             },
             getStudies: function(studies) {
-                return $http.get('http://www.cbioportal.org/api-legacy/studies?study_ids=' + studies);
+                return $http.get('http://www.cbioportal.org/api-legacy/studies');
             },
             getpumbedArticle: function(pumbedID) {
                 return $http.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&retmode=json&id=' + pumbedID);

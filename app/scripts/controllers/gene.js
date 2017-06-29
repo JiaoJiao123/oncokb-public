@@ -11,7 +11,7 @@
 angular.module('oncokbStaticApp')
     .controller('GeneCtrl', function($scope, $rootScope, $routeParams, $location, $route, api, $timeout,
                                      DTColumnDefBuilder, utils, _, MutationDetailsEvents, PileupUtil,
-                                     Plotly, MutationMapper, MutationCollection) {
+                                     Plotly, MutationMapper, MutationCollection, $q) {
         // fetch the mutation mapper from api and construct the graph from mutation mapper library
         var mutationData = [];
         var uniqueClinicVariants = [];
@@ -25,7 +25,9 @@ angular.module('oncokbStaticApp')
         var previousChosenIndex = -1;
         var singleStudyFlag = false;
         var currentMax = $('.diagram-y-axis-limit-input').val();
-
+        if ($routeParams.variantName) {
+            $scope.variantName = $routeParams.variantName.toUpperCase();
+        }
         // customized settings for main mapper
         var geneList = [$routeParams.geneName];
         var options = {
@@ -101,70 +103,110 @@ angular.module('oncokbStaticApp')
 
         // fetch portal alteration data for histogram and construct the histogram with plotly.js
         function fetchHistogramData() {
-            api.getPortalAlterationSampleCount()
-                .then(function(totalCounts) {
-                    api.getPortalAlterationSampleCount($scope.gene.hugoSymbol)
-                        .then(function(countsByGene) {
-                            $scope.meta.altFreFlag = countsByGene.data.length > 0;
-                            if ($scope.meta.altFreFlag) {
-                                var studies = [];
-                                var results = [];
-                                var shortNames = [];
-                                var frequencies = [];
-                                var fullNames = [];
-                                var hoverInfo = [];
-                                for (var i = 0; i < countsByGene.data.length; i++) {
-                                    for (var j = 0; j < totalCounts.data.length; j++) {
-                                        if (totalCounts.data[j][0] === countsByGene.data[i][0]) {
-                                            results.push({
-                                                study: countsByGene.data[i][0],
-                                                frequency: (100 * countsByGene.data[i][1] / totalCounts.data[j][1]).toFixed(1)
-                                            });
-                                            break;
-                                        }
-                                    }
-                                }
-                                results.sort(function(a, b) {
-                                    return b.frequency - a.frequency;
+            $q.all([api.getPortalAlterationSampleCount(), api.getPortalAlterationSampleCount($scope.gene.hugoSymbol), api.getStudies(), api.getMutationMapperData($routeParams.geneName)]).then(function(result) {
+                var totalCounts = result[0];
+                var countsByGene = result[1];
+                var studyInfo = result[2];
+                var mutationMapperInfo = result[3];
+                var tempMutationMapperInfo = mutationMapperInfo.data;
+                if ($scope.variantName) {
+                    tempMutationMapperInfo = _.filter(mutationMapperInfo.data, function(item) {
+                        return item.proteinChange === $scope.variantName;
+                    });
+                    var studyCountMapping = {};
+                    _.each(tempMutationMapperInfo, function(item) {
+                        if (!studyCountMapping[item.cancerStudy]) {
+                            studyCountMapping[item.cancerStudy] = 1;
+                        } else {
+                            studyCountMapping[item.cancerStudy]++;
+                        }
+                    });
+                    countsByGene.data = _.pairs(studyCountMapping);
+                }
+                console.log(mutationMapperInfo);
+                $scope.altFreFlag = countsByGene.data.length > 0;
+                if ($scope.altFreFlag) {
+                    var studies = [];
+                    var results = [];
+                    var shortNames = [];
+                    var frequencies = [];
+                    var fullNames = [];
+                    var hoverInfo = [];
+                    for (var i = 0; i < countsByGene.data.length; i++) {
+                        for (var j = 0; j < totalCounts.data.length; j++) {
+                            if (totalCounts.data[j][0] === countsByGene.data[i][0]) {
+                                results.push({
+                                    study: countsByGene.data[i][0],
+                                    frequency: (100 * countsByGene.data[i][1] / totalCounts.data[j][1]).toFixed(1),
+                                    note: '(' + countsByGene.data[i][1] + ' out of ' + totalCounts.data[j][1] + ')'
                                 });
-                                results.forEach(function(item) {
-                                    studies.push(item.study);
-                                    frequencies.push(item.frequency);
-                                    hoverInfo.push(item.frequency + '% of patients have annotated ' + $scope.gene.hugoSymbol + ' mutation');
-                                });
-
-                                api.getStudies(studies.join())
-                                    .then(function(studyInfo) {
-                                        studies.forEach(function(item) {
-                                            studyInfo.data.forEach(function(item1) {
-                                                if (item1.id === item) {
-                                                    shortNames.push(item1.short_name.indexOf('(') !== -1 ? item1.short_name.substring(0, item1.short_name.indexOf('(') - 1) : item1.short_name);
-                                                    fullNames.push(item1.name);
-                                                }
-                                            });
-                                        });
-                                        if (fullNames.length > 3) {
-                                            _.each(hoverInfo, function(item, index) {
-                                                hoverInfo[index] = autoBreakLines(item + ' in ' + fullNames[index]);
-                                            });
-
-                                            plots(studies, shortNames, fullNames, frequencies, hoverInfo);
-                                        } else {
-                                            var infoList = '<br/><ul class="fa-ul">';
-                                            _.each(hoverInfo, function(item, index) {
-                                                infoList += '<li><i class="fa fa-circle iconSize"></i> ' + item + ' in ' + fullNames[index] + '</li>';
-                                            });
-                                            infoList += '</ul>';
-                                            $('#histogramDiv').append(infoList);
-                                        }
-                                    });
-                            } else {
-                                $scope.status.moreInfo = true;
+                                break;
+                            }
+                        }
+                    }
+                    results.sort(function(a, b) {
+                        return b.frequency - a.frequency;
+                    });
+                    results.forEach(function(item) {
+                        studies.push(item.study);
+                        frequencies.push(item.frequency);
+                        if (!$scope.variantName) {
+                            hoverInfo.push(item.frequency + '% of patients ' + ' have annotated ' + $scope.gene.hugoSymbol + ' mutation');
+                        } else {
+                            hoverInfo.push(item.frequency + '% of patients ' + item.note + ' have annotated ' + $scope.gene.hugoSymbol + ' ' + $scope.variantName + ' mutation');
+                        }
+                    });
+                    studies.forEach(function(item) {
+                        studyInfo.data.forEach(function(item1) {
+                            if (item1.id === item) {
+                                shortNames.push(item1.short_name.indexOf('(') !== -1 ? item1.short_name.substring(0, item1.short_name.indexOf('(') - 1) : item1.short_name);
+                                fullNames.push(item1.name);
                             }
                         });
-                });
-        }
+                    });
+                    if (fullNames.length > 3) {
+                        _.each(hoverInfo, function(item, index) {
+                            hoverInfo[index] = autoBreakLines(item + ' in ' + fullNames[index]);
+                        });
 
+                        plots(studies, shortNames, fullNames, frequencies, hoverInfo);
+                    } else {
+                        var infoList = '<br/><ul class="fa-ul">';
+                        _.each(hoverInfo, function(item, index) {
+                            infoList += '<li><i class="fa fa-circle iconSize"></i> ' + item + ' in ' + fullNames[index] + '</li>';
+                        });
+                        infoList += '</ul>';
+                        $('#histogramDiv').append(infoList);
+                    }
+                } else {
+                    $scope.status.moreInfo = true;
+                }
+                $scope.mutationMapperFlag = tempMutationMapperInfo.length > 0;
+                if ($scope.mutationMapperFlag) {
+                    var count = 1;
+                    tempMutationMapperInfo.forEach(function(item) {
+                        mutationData.push({
+                            cancerStudy: item.cancerStudy,
+                            geneSymbol: item.gene.hugoSymbol,
+                            caseId: item.sampleId,
+                            proteinChange: item.proteinChange,
+                            mutationType: item.alterationType,
+                            proteinPosStart: item.proteinStart,
+                            proteinPosEnd: item.proteinEnd,
+                            mutationSid: 'stalone_mut_' + count,
+                            mutationId: 'stalone_mut_' + count
+                        });
+                        count++;
+                    });
+
+                    mutationMapperConstructor(mutationData, false);
+                }
+            }, function(error) {
+            });
+        }
+        function constructVariantPage () {
+
+        }
         function autoBreakLines(rawText) {
             // insert new line symbol to label content
             var words = rawText.split(' ');
@@ -386,21 +428,18 @@ angular.module('oncokbStaticApp')
         $scope.gene = {
             hugoSymbol: $routeParams.geneName
         };
-        $scope.meta = {
-            clinicalTable: {},
-            biologicalTable: {},
-            showGeneAddition: true,
-            altFreFlag: true,
-            highestLevels: []
-        };
-
+        $scope.meta = {};
+        $scope.meta.clinicalTable = {};
+        $scope.meta.biologicalTable = {};
         $scope.status = {
             hasSummary: false,
             hasBackground: false,
+            hasLevel: false,
             moreInfo: false,
             getClinicalEvidence: false,
             getBiologicalEvidence: false,
         };
+        $scope.altFreFlag = true;
         $scope.mutationMapperFlag = true;
         $scope.view = {};
         $scope.view.levelColors = $rootScope.data.levelColors;
@@ -499,26 +538,21 @@ angular.module('oncokbStaticApp')
                 var content = result.data;
                 if (content) {
                     $scope.gene = content.gene;
-                    if ($scope.gene.hugoSymbol.toLowerCase() === 'other biomarkers') {
-                        $scope.meta.showGeneAddition = false;
-                        $scope.meta.altFreFlag = false;
-                    }
                     $route.updateParams({geneName: $scope.gene.hugoSymbol});
                     var subNavItems = [{content: $scope.gene.hugoSymbol}];
 
-                    if (content.highestSensitiveLevel) {
-                        $scope.meta.highestLevels.push(content.highestSensitiveLevel.replace('LEVEL_', ''));
+                    if (content.highestLevel) {
+                        $scope.meta.highestLevel = content.highestLevel.replace('LEVEL_', '');
+                        $scope.status.hasLevel = true;
                     }
-                    if (content.highestResistanceLevel) {
-                        $scope.meta.highestLevels.push(content.highestResistanceLevel.replace('LEVEL_', ''));
-                    }
+
                     $rootScope.view.subNavItems = subNavItems;
 
                     fetchHistogramData();
                 } else {
                     console.log('no such gene existed ');
                     if (/[a-z]/.test($routeParams.geneName)) {
-                        $location.path('/genes/' +
+                        $location.path('/gene/' +
                             $routeParams.geneName.toUpperCase());
                     } else {
                         $location.path('/genes');
@@ -560,7 +594,7 @@ angular.module('oncokbStaticApp')
                     ];
                 }
                 var mutationType = '';
-                if (allMissenseVariants.length > 0) {
+                if (allMissenseVariants.length > 0 && !$scope.variantName) {
                     _.each(allMissenseVariants, function(item, index) {
                         if (item !== undefined && !(/fusion/i).test(item.alteration)) {
                             if (_.isNull(item.consequence)) {
@@ -648,30 +682,6 @@ angular.module('oncokbStaticApp')
                 $scope.meta.geneBackground = '';
             });
 
-        api.getMutationMapperData($routeParams.geneName)
-            .then(function(mutationMapperInfo) {
-                $scope.mutationMapperFlag = mutationMapperInfo.data.length > 0;
-                if ($scope.mutationMapperFlag) {
-                    var count = 1;
-                    mutationMapperInfo.data.forEach(function(item) {
-                        mutationData.push({
-                            cancerStudy: item.cancerStudy,
-                            geneSymbol: item.gene.hugoSymbol,
-                            caseId: item.sampleId,
-                            proteinChange: item.proteinChange,
-                            mutationType: item.alterationType,
-                            proteinPosStart: item.proteinStart,
-                            proteinPosEnd: item.proteinEnd,
-                            mutationSid: 'stalone_mut_' + count,
-                            mutationId: 'stalone_mut_' + count
-                        });
-                        count++;
-                    });
-
-                    mutationMapperConstructor(mutationData, false);
-                }
-            });
-
         $scope.displayOncogenic = function(item) {
             if (item === 'Oncogenic') {
                 return 'Yes';
@@ -681,7 +691,12 @@ angular.module('oncokbStaticApp')
             return item;
         };
 
-        $scope.getLevelColor = utils.getLevelColor;
+        $scope.setColor = function(level) {
+            if ($scope.view.levelColors.hasOwnProperty(level)) {
+                return {color: $scope.view.levelColors[level]};
+            }
+            return {color: $scope.view.levelColors.other};
+        };
 
         $scope.tableClicked = function(type) {
             // Bootstrap fade in has 150ms transition time. DataTable only can gets width after the transition.
